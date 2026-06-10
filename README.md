@@ -1,15 +1,26 @@
-# Contribution [#]: [Issue Title]
+# Contribution #1: Close files, even when seeding, if they've been idle for some period of time
 
-**Contribution Number:** [1 / 2 / 3]  
-**Student:** [Your Name]  
-**Issue:** [GitHub issue link]  
-**Status:** [Phase I / Phase II / Phase III / Phase IV] [In Progress / Complete]
+**Contribution Number:** 1  
+**Student:** Jacob Lopez  
+**Issue:** https://github.com/transmission/transmission/issues/7455 
+**Status:** Phase I Complete
 
 ---
 
 ## Why I Chose This Issue
 
-[1-2 paragraphs explaining why this issue interests you, how it matches your skills/learning goals, what you hope to learn]
+I chose this issue because the problem is concrete and well-defined. Transmission
+never closes file handles on seeding torrents, even when no data has been
+transferred for an extended period. This creates real problems for users whose
+storage setups depend on idle file detection to manage cache space. The fix has
+clear acceptance criteria, adding a configurable idle timeout that releases file
+handles during seeding and reopens them when a peer requests data.
+
+The scope feels right for a focused contribution. It touches the core file
+management layer rather than requiring changes across the entire codebase, and
+the maintainer has already labeled it "good first issue" and "pr welcome," which
+signals it's actionable. I'm also interested in learning how a mature C++
+application like Transmission manages system resources at this level.
 
 ---
 

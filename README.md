@@ -28,19 +28,21 @@ application like Transmission manages system resources at this level.
 
 ### Problem Description
 
-[In your own words, what's broken or missing?]
+Transmission never closes file handles for seeding torrents based on idle time. Once a file is opened for a seeding torrent, the handle stays open indefinitely — it is only evicted when the 32-slot pool overflows (LRU order) or the torrent is removed entirely.
 
 ### Expected Behavior
 
-[What should happen?]
+File handles that haven't been accessed for a configurable period (e.g., 30 seconds) should be closed automatically. Handles should reopen transparently when a peer next requests data from that file.
 
 ### Current Behavior
 
-[What actually happens?]
+`tr_open_files` caches up to 32 file descriptors and evicts only on overflow or torrent removal. There is no time-based eviction, so handles for seeding torrents accumulate and never release on idle.
 
 ### Affected Components
 
-[Which parts of the codebase are involved?]
+- `libtransmission/open-files.h` / `open-files.cc` — the file descriptor pool (`tr_open_files` and its `Val` struct)
+- `libtransmission/session.cc` — the per-second `on_now_timer()` hook where the idle sweep belongs
+- `libtransmission/session-settings.h` — where the new configurable threshold will live
 
 ---
 
@@ -106,11 +108,11 @@ cmake --build build --target libtransmission-test -j8
 
 ### Analysis
 
-[Your analysis of the root cause - what's causing the issue?]
+The root cause is in `tr_open_files::Val` in `libtransmission/open-files.h` (lines 48–67). This struct represents a cached open file handle and stores only `fd_` (the file descriptor) and `writable_` (open mode). There is no `last_use_` timestamp. Without a timestamp on each cached entry, there is no way to measure how long a handle has been idle, making time-based eviction impossible at the pool level.
 
 ### Proposed Solution
 
-[High-level description of your fix approach]
+Add a `time_t last_use_` field to `tr_open_files::Val` and stamp it on every cache hit and insertion in `get()`. Add a `close_idle()` method that uses the existing `pool_.erase_if()` mechanism to evict handles idle longer than a configurable threshold. Wire `close_idle()` into `on_now_timer()` in `session.cc` and expose the threshold as a new `open_file_idle_secs` setting via the C API and RPC/JSON API.
 
 ### Implementation Plan
 

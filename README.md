@@ -144,36 +144,53 @@ Using UMPIRE framework (adapted):
 
 ### Unit Tests
 
-- [ ] Test case 1: [Description]
-- [ ] Test case 2: [Description]
-- [ ] Test case 3: [Description]
+Added to `tests/libtransmission/open-files-test.cc`:
+
+- [x] `closeIdleClosesIdleFiles`: caches two files, refreshes only one, then sweeps past the threshold — confirms the idle file's handle is closed and the recently-used one is kept
+- [x] `closeIdleKeepsRecentlyUsedFiles`: sweeps just before the threshold — confirms the handle stays cached
+- [x] All 10 pre-existing `OpenFilesTest` cases still pass
 
 ### Integration Tests
 
-- [ ] Integration scenario 1
-- [ ] Integration scenario 2
+- [x] `RpcTest.sessionGet`: confirms `open_file_idle_secs` is returned by the `session-get` RPC method (verifies the setting is reachable via the RPC/JSON API)
+- [x] Full `libtransmission-test` suite: 573 passed, 0 failed (1 pre-existing unrelated skip)
 
 ### Manual Testing
 
-[What you tested manually and results]
+Not yet run. Planned check: start `transmission-daemon` with `"open-file-idle-secs": 30` in `settings.json`, add a seeding torrent, and use `lsof -p <pid>` to confirm a handle is released after ~30s idle and re-opened on the next request.
 
 ---
 
 ## Implementation Notes
 
-### Week [X] Progress
+### Week 1 Progress (June 22, 2026)
 
-[What you built this week, challenges faced, decisions made]
+**What I built:** the full `open_file_idle_secs` feature end-to-end — a configurable idle timeout that closes cached file handles (even while seeding) once they've gone unused past the threshold, reopening them transparently on the next request.
 
-### Week [Y] Progress
+- Added a `time_t last_use_` timestamp to `tr_open_files::Val` and stamp it on every cache hit and insertion in `get()`.
+- Added `tr_open_files::close_idle()`, which evicts idle handles via the cache's existing `pool_.erase_if()` (the same path `close_torrent()` uses).
+- Wired `close_idle()` into `on_now_timer()` (runs once per second); it's a no-op when the setting is 0.
+- Added the `open_file_idle_secs` setting (default 30s, 0 disables) and exposed it via both the C API and the RPC/JSON API.
 
-[Continue documenting as you work]
+**Challenges faced:**
+
+- The C API setter didn't compile at first because `settings_` is private — the existing C setters get access through a `friend` list in `session.h`, so I added mine there.
+- `RpcTest.sessionGet` failed after wiring, since it asserts the exact set of `session-get` keys; this confirmed the key is exposed, and I added it to the test's expected list.
+- Couldn't run `./code_style.sh` locally (installed clang-format is v17; the repo's `.clang-format` needs v20), so I modeled every change on adjacent code and hand-checked the 128-column limit.
 
 ### Code Changes
 
-- **Files modified:** [List]
-- **Key commits:** [Links to important commits]
-- **Approach decisions:** [Why you chose certain approaches]
+- **Files modified:**
+  - `libtransmission/open-files.{h,cc}` — `last_use_` field + `close_idle()`
+  - `libtransmission/session.{cc,h}` — timer hook, C API getter/setter, accessor, friend declaration
+  - `libtransmission/session-settings.h` — new setting + serializer field
+  - `libtransmission/quark.{h,cc}` — `TR_KEY_open_file_idle_secs`
+  - `libtransmission/transmission.h` — C API declarations
+  - `libtransmission/rpcimpl.cc` — RPC getter/setter
+  - `tests/libtransmission/open-files-test.cc` — 2 new tests
+  - `tests/libtransmission/rpc-test.cc` — expected-key update
+- **Key commits:** [`fix-issue-7455` branch](https://github.com/jlopez695/transmission/tree/fix-issue-7455)
+- **Approach decisions:** reused the existing `pool_.erase_if()` eviction path rather than adding new machinery; kept the time concept in `tr_open_files` instead of the generic `tr_lru_cache`; used `0` to disable rather than adding a separate enabled flag.
 
 ---
 
